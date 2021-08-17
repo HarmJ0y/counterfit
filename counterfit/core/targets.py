@@ -10,6 +10,7 @@ import tempfile
 import pyminizip
 import shutil
 import hashlib
+from pprint import pprint
 
 from counterfit.core import wrappers, enums
 from counterfit.core.interfaces import AbstractTarget
@@ -17,6 +18,7 @@ from counterfit.core.interfaces import AbstractTarget
 from PIL import Image
 
 Query = namedtuple('Query', ['input', 'output', 'label'])
+
 
 class Target(AbstractTarget):
     """Parent class for all targets"""
@@ -224,6 +226,7 @@ class Target(AbstractTarget):
         elif self.model_data_type in ('pe', 'html'):
             module_path = "/".join(self.__module__.split(".")[:-1])
             if "results" in os.listdir(module_path):
+                # deletes a <target>/results folder if it already exists
                 shutil.rmtree(module_path+"/results", ignore_errors=True)
             
             filenames = []
@@ -232,6 +235,8 @@ class Target(AbstractTarget):
             sample_index = self.active_attack.sample_index
             if not hasattr(sample_index, '__iter__'):
                 sample_index = [sample_index]
+            
+            # creates a temporary directory where to store EXE's
             with tempfile.TemporaryDirectory() as tmpdirname:
                 for i, array in enumerate(final[0]):  # loop over final PEs
                     final_label = self.active_attack.results["final"]["label"][i]
@@ -242,20 +247,6 @@ class Target(AbstractTarget):
                 self.active_attack.results['final']['images'] = filenames
                 self._create_zip_password_protected(tmpdirname, zip_path)
 
-    def _save_exe(self, exe, suffix='', extension='html', filename=None, temp_dir=None):
-        assert self.model_data_type in ("pe", "html"), "Saving non-'pe/html' types as an pe/html is not supported"
-        module_path = "/".join(self.__module__.split(".")[:-1])
-        if filename is None:
-            filename = f"{temp_dir}/{self.model_name}-{self.active_attack.attack_id}"
-            if "results" not in os.listdir(module_path):
-                os.mkdir(f"{module_path}/results")
-        if suffix:
-            filename += f'-{suffix}'
-        if self.model_data_type == 'html':    
-            filename += f'.{extension}'
-        with open(filename, 'wb') as h:
-            h.write(exe)
-        return filename
     
     def _create_zip_password_protected(self, folder_path, output_path):
         """
@@ -306,14 +297,20 @@ class ArtTarget(Target):
             ),
             **self.active_attack.parameters,
         )
+        
+        # here it calls the generate() method from attack
+        # should return list of adversairal examples
+            
         if self.active_attack.parameters.get("targeted", False):
             adv_examples = attack_cls.generate(
                 self.active_attack.samples, [self.active_attack.target_class] * len(self.active_attack.samples)
-            ).tolist()
+            )
 
         else:
-            adv_examples = attack_cls.generate(self.active_attack.samples).tolist()
+            adv_examples = attack_cls.generate(self.active_attack.samples)
 
+        adv_examples = adv_examples.tolist() if hasattr(adv_examples, "tolist") else adv_examples
+        
         self.active_attack.status = enums.AttackStatus.completed
         return adv_examples
 
@@ -359,3 +356,64 @@ class TextTarget(Target):
 
     def _run_attack(self, logging):
         return self._run_textattack_attack(logging)
+
+
+class PETarget(ArtTarget):
+    """
+    Parent class for PE attack related targets.
+    Contains modifications to Target class functions to be ready for PE input 
+    (multiple PE with different sizes).
+    """
+
+    def _submit(self, batch_input):
+        # submit to model, without caching
+        self.num_evaluations += len(batch_input)
+        self.actual_evaluations += len(batch_input)
+        
+        # here it calls the target's __call__ function
+        # ORIGINAL - doesn't work with batch of PE, since difference sizes
+        #return self.__call__(np.array(batch_input)) 
+        return self.__call__(batch_input)
+
+    def _get_query(self, batch):
+        inp = batch
+        # here it receives output from an target
+        outp = self._submit(inp)
+        labels = np.atleast_1d(self.outputs_to_labels(outp))  # call the model predict function and send perturbed text
+        # convert to named-tuple in raw list format (JSON compatibility)
+        
+        inp = inp.tolist() if hasattr(inp, "tolist") else inp
+        return Query(inp, 
+                     np.array(outp).tolist(), 
+                     np.array(labels).tolist())
+
+    def _save_exe(self, exe, suffix='', filename=None, temp_dir=None):
+        assert self.model_data_type in ("pe", "html"), "Saving non-'pe/html' types as an pe/html is not supported"
+        module_path = "/".join(self.__module__.split(".")[:-1])
+        if filename is None:
+            filename = f"{temp_dir}/{self.model_name}-{self.active_attack.attack_id}"
+            if "results" not in os.listdir(module_path):
+                os.mkdir(f"{module_path}/results")
+        if suffix:
+            filename += f'-{suffix}'
+        if self.model_data_type == 'html':
+            filename += f'.html'
+        elif self.model_data_type == 'pe':
+            filename += f'.exe'
+        
+        # TEMP: for sake of MLSEC competition format, need only 001 / 002 / ...
+        filename = temp_dir + "/" + suffix.split('-')[1]
+        print(f"[*] Saving EXE with index {suffix.split('-')[1]} to {filename}")
+
+        with open(filename, 'wb') as h:
+            if isinstance(exe, np.ndarray):
+                exe = np.bytes_(exe)
+            if isinstance(exe, bytes) or isinstance(exe, np.bytes_):
+                h.write(exe)
+            elif isinstance(exe, list):
+                exe_bytes = b''.join([bytes([i]) for i in exe])
+                h.write(exe_bytes)
+            else:
+                raise TypeError(f"Adversarial example is not either in bytes or list type!")
+        return filename
+
