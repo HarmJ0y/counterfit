@@ -358,7 +358,7 @@ class TextTarget(Target):
         return self._run_textattack_attack(logging)
 
 
-class PETarget(ArtTarget):
+class PETarget(Target):
     """
     Parent class for PE attack related targets.
     Contains modifications to Target class functions to be ready for PE input 
@@ -403,8 +403,7 @@ class PETarget(ArtTarget):
         
         # TEMP: for sake of MLSEC competition format, need only 001 / 002 / ...
         filename = temp_dir + "/" + suffix.split('-')[1]
-        print(f"[*] Saving EXE with index {suffix.split('-')[1]} to {filename}")
-
+        
         with open(filename, 'wb') as h:
             if isinstance(exe, np.ndarray):
                 exe = np.bytes_(exe)
@@ -417,3 +416,37 @@ class PETarget(ArtTarget):
                 raise TypeError(f"Adversarial example is not either in bytes or list type!")
         return filename
 
+    def _as_blackbox_pe_target(self, logging, attack_name="", attack_id=""):
+        func = functools.partial(self._submit_with_logging, attack_name=attack_name, attack_id=attack_id)
+        return wrappers.BlackBoxClassifierWrapper(
+            submit_sample=func if logging else self._submit,
+            model_input_shape=self.model_input_shape,
+            nb_output_classes=len(self.model_output_classes),
+            clip_values=self.clip_values,
+            channels_first=self.channels_first,
+        )
+
+    def _run_attack(self, logging):
+        # initialize attack
+        attack_cls = self.active_attack.attack_cls(
+            self._as_blackbox_pe_target(
+                logging,
+                attack_name=self.active_attack.attack_name,
+                attack_id=self.active_attack.attack_id,
+            ),
+            **self.active_attack.parameters,
+        )
+        
+        # here it calls the generate() method from attack
+        # should return list of adversairal examples
+        if self.active_attack.parameters.get("targeted", False):
+            adv_examples = attack_cls.generate(
+                self.active_attack.samples, [self.active_attack.target_class] * len(self.active_attack.samples)
+            )
+        else:
+            adv_examples = attack_cls.generate(self.active_attack.samples)
+
+        adv_examples = adv_examples.tolist() if hasattr(adv_examples, "tolist") else adv_examples
+        
+        self.active_attack.status = enums.AttackStatus.completed
+        return adv_examples
