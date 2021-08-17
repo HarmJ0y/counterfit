@@ -6,6 +6,9 @@ __pycache__/
 # C extensions
 *.so
 
+# MAC fs metdata
+*.DS_Store
+
 # results
 targets/*/results
 
