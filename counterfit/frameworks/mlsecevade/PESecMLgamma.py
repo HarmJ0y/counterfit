@@ -1,6 +1,6 @@
 from counterfit.core.attacks import Attack
 from hyperopt import hp
-from .PEutils.gamma_attack import SecMLGammaAttack
+from .PEutils.secml_attacks import SecMLGammaAttack
 
 class PEGammaAttack(Attack):
     attack_cls = SecMLGammaAttack
