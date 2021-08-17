@@ -6,6 +6,7 @@ from counterfit.core.run_scan_utils import get_run_summary, get_printable_run_su
 
 parser = argparse.ArgumentParser()
 parser.add_argument("-l", "--log", action="store_true", help="log all actions")
+parser.add_argument("-a", "--all", action="store_true", help="run attacks on all samples")
 
 
 @cmd2.with_argparser(parser)
@@ -48,9 +49,15 @@ def do_run(self, args):
         f"\n[+] Running {CFState.get_instance().active_target.active_attack.attack_name} on {CFState.get_instance().active_target.model_name}\n"
     )
 
-    CFState.get_instance().active_target.set_attack_samples(
-        CFState.get_instance().active_target.active_attack.sample_index
-    )
+    if args.all:
+        CFState.get_instance().active_target.set_attack_samples(
+            range(len(CFState.get_instance().active_target.X))
+        )
+    # take sample_index from config
+    else:
+        CFState.get_instance().active_target.set_attack_samples(
+            CFState.get_instance().active_target.active_attack.sample_index
+        )
     # Run init_attack followed by run_attack
     CFState.get_instance().active_target.init_run_attack()
     CFState.get_instance().active_target.run_attack(logging=args.log)

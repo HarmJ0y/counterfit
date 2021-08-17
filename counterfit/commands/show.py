@@ -335,7 +335,7 @@ def show_sample(self, args):
         self.pwarning("\n [!] Please provide valid arguments. Try 'show sample -i 2' or 'show sample -s'.\n")
         return
     
-    self.poutput(show_current_sample(target, get_printable_batch(target, samples), heading1, sample_index))
+    self.poutput(show_current_sample(target, get_printable_batch(target, samples, sample_index=sample_index), heading1, sample_index))
 
 
 def show_results(self, args):
