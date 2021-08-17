@@ -49,13 +49,17 @@ def get_printable_batch(target, samples, sample_index=None, is_result=False):
             sample_index = [target.active_attack.sample_index]
         elif is_result:
             sample_index = target.active_attack.sample_index
-        for s_i in range(len(sample_index)):
-            if not is_result:
-                target_path = target.sample_input_path
-                file_prefix_name = target.zip_info[sample_index[s_i]].filename
-            else:
+        
+        if is_result:
+            for s_i in range(len(sample_index)):
                 target_path = target_path + "/results"
                 file_prefix_name = target.zip_info[sample_index[s_i]].filename
+                final_file_location = target_path + "/" + file_prefix_name
+                result.append(final_file_location)
+        else:
+            # typeof(sample_index) == int
+            target_path = target.sample_input_path
+            file_prefix_name = target.zip_info[sample_index].filename
             final_file_location = target_path + "/" + file_prefix_name
             result.append(final_file_location)
 
@@ -81,7 +85,11 @@ def get_run_summary(target, attack=None):
     l_0 = np.array(attack.results["initial"]["label"])
 
     # final scores/labels
-    i_f = np.array(attack.results['final']['input'])
+    if target.model_data_type not in ("pe", "html"):
+        i_f = np.array(attack.results['final']['input'])
+    else:    
+        # cannot broadcast shapes in np.array if PE / HTML
+        i_f = attack.results['final']['input']
     o_f = np.array(attack.results['final']['output'])
     l_f = np.array(attack.results['final']['label'])
 
