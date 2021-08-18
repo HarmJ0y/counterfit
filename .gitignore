@@ -1,3 +1,10 @@
+# MAC fs metdata
+*.DS_Store
+
+# MLSec related zips
+*mlsecmalware.zip
+*mlsec_malware_samples.zip
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -5,9 +12,6 @@ __pycache__/
 
 # C extensions
 *.so
-
-# MAC fs metdata
-*.DS_Store
 
 # results
 targets/*/results
