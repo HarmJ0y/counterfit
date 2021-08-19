@@ -13,22 +13,119 @@ from secml_malware.attack.blackbox.c_gamma_shift_problem import CGammaShiftEvasi
 
 from secml_malware.attack.blackbox.c_blackbox_header_problem import CBlackBoxHeaderEvasionProblem
 
+from secml_malware.attack.whitebox.c_header_evasion import CHeaderEvasion
+from secml_malware.attack.whitebox.c_padding_evasion import CPaddingEvasion
+
+from secml_malware.models.malconv import MalConv
+from secml_malware.models.c_classifier_end2end_malware import CClassifierEnd2EndMalware, End2EndModel
+
+
 def print_config(type=None, model_endpoint=None, goodware=None, kwargs=None):
         print(f"\n[!] {type} config:")
-        print("\ttarget model: ", model_endpoint)
         _ = [print(f"\t{x}: ", kwargs[x]) for x in kwargs.keys()]
-        """
-        print("\tnumber of sections to be added: ", kwargs["sections"])
-        print("\tpopulation_size: ", kwargs["population_size"])
-        print("\tpenalty_regularizer: ", kwargs["penalty_regularizer"])
-        print("\titerations: ", kwargs["iterations"])
-        print("\tthreshold: ", kwargs["threshold"])
-        """
         if goodware:
             print("\tgoodware folder and contents:\n\t\t", goodware+"/")
             _ = [print("\t\t",x) for x in os.listdir(goodware)]
+        print("\ttarget model: ", model_endpoint)
         print()
 
+
+class SecML_padding_whitebox:
+    # running attacks against MalConv only for now
+    net = MalConv()
+    net = CClassifierEnd2EndMalware(net)
+    net.load_pretrained_model()
+
+    def __init__(self, *args, **kwargs):
+        self.padding_attack = CPaddingEvasion(
+                            self.net, 
+                            kwargs["how_many"], # bytes to perturb
+                            random_init=False, 
+                            iterations=kwargs["iterations"],  
+                            threshold=kwargs["threshold"])
+
+        print_config(type="Whitebox padding attack", model_endpoint="malconv", kwargs=kwargs)
+
+    def generate(self, x, y=None):
+        adversarial_samples = []
+
+        for i, sample in enumerate(x):
+            x = End2EndModel.bytes_to_numpy(
+                sample, self.net.get_input_max_length(), 256, False
+            )
+            _, malconv_confidence = self.net.predict(x, return_decision_function=True)
+            y = malconv_confidence.atleast_2d().tondarray()[0, 1].item()
+            
+            try:
+                j = CFState.get_instance().active_target.active_attack.sample_index[i]
+            except TypeError:
+                j = CFState.get_instance().active_target.active_attack.sample_index
+
+            print(f"[*] Executing whitebox padding attack on sample index {j}...")
+
+            y_pred, adv_score, adv_ds, f_obj = self.padding_attack.run(x, y)
+
+            # building a functional sample out of attack results
+            original_filename = f"{config.targets_path}/mlsecmalware/original_samples/00{j+1}"
+            real_adv_X = self.padding_attack.create_real_sample_from_adv(original_filename, adv_ds.X)
+            adv_x = End2EndModel.bytes_to_numpy(real_adv_X, self.net.get_input_max_length(), 256, False)
+            _, malconv_confidence = self.net.predict(adv_x, return_decision_function=True)
+            print("[!] Results on Malconv:")
+            print(f"\tBefore padding: {y}")
+            print(f"\tAfter padding: {malconv_confidence.atleast_2d().tondarray()[0, 1].item()}")
+            
+            adversarial_samples.append(np.bytes_(real_adv_X))
+
+        return adversarial_samples
+
+
+class SecML_header_whitebox:
+    # running attacks against MalConv only for now
+    net = MalConv()
+    net = CClassifierEnd2EndMalware(net)
+    net.load_pretrained_model()
+
+    def __init__(self, *args, **kwargs):
+        self.partial_dos = CHeaderEvasion(
+                            self.net, 
+                            random_init=False, 
+                            iterations=kwargs["iterations"], 
+                            optimize_all_dos=kwargs["optimize_all_dos"], 
+                            threshold=kwargs["threshold"])
+
+        print_config(type="Whitebox header manipulation", model_endpoint="malconv", kwargs=kwargs)
+
+    def generate(self, x, y=None):
+        adversarial_samples = []
+
+        for i, sample in enumerate(x):
+            x = End2EndModel.bytes_to_numpy(
+                sample, self.net.get_input_max_length(), 256, False
+            )
+            _, malconv_confidence = self.net.predict(x, return_decision_function=True)
+            y = malconv_confidence.atleast_2d().tondarray()[0, 1].item()
+            
+            try:
+                j = CFState.get_instance().active_target.active_attack.sample_index[i]
+            except TypeError:
+                j = CFState.get_instance().active_target.active_attack.sample_index
+
+            print(f"[*] Executing whitebox padding attack on sample index {j}...")
+
+            y_pred, adv_score, adv_ds, f_obj = self.partial_dos.run(x, y)
+            
+            # building a functional sample out of attack results
+            original_filename = f"{config.targets_path}/mlsecmalware/original_samples/00{j+1}"
+            real_adv_X = self.partial_dos.create_real_sample_from_adv(original_filename, adv_ds.X)
+            adv_x = End2EndModel.bytes_to_numpy(real_adv_X, self.net.get_input_max_length(), 256, False)
+            _, malconv_confidence = self.net.predict(adv_x, return_decision_function=True)
+            print("[!] Results on Malconv:")
+            print(f"\tBefore DOS manipulations: {y}")
+            print(f"\tAfter DOS manipulations: {malconv_confidence.atleast_2d().tondarray()[0, 1].item()}")
+            
+            adversarial_samples.append(np.bytes_(real_adv_X))
+
+        return adversarial_samples
 
 
 class SecML_DOS:
@@ -92,7 +189,7 @@ class SecMLGammaShift:
         model = CClassifierEmber(self.model_endpoint)
         self.ember_model = CEmberWrapperPhi(model)
 
-        goodware = os.path.join(config.attacks_path, "mlsecevade/PEutils/goodware")
+        goodware = os.path.join(config.attacks_path, "secml/PEutils/goodware")
         section_population, what_from_who = CGammaSectionsEvasionProblem.\
                                                 create_section_population_from_folder(
                                                     goodware, 
@@ -141,6 +238,7 @@ class SecMLGammaShift:
 
         return adversarial_samples
 
+
 class SecMLGammaInjection:
     # running attacks against only ember for now
     model_endpoint = os.path.join(
@@ -152,7 +250,7 @@ class SecMLGammaInjection:
         model = CClassifierEmber(self.model_endpoint)
         self.ember_model = CEmberWrapperPhi(model)
 
-        goodware = os.path.join(config.attacks_path, "mlsecevade/PEutils/goodware")
+        goodware = os.path.join(config.attacks_path, "secml/PEutils/goodware")
         section_population, what_from_who = CGammaSectionsEvasionProblem.\
                                                 create_section_population_from_folder(
                                                     goodware, 

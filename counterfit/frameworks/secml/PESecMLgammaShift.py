@@ -1,14 +1,14 @@
 from counterfit.core.attacks import Attack
 from numpy import random
-from .PEutils.secml_attacks import SecMLGammaInjection
+from .PEutils.secml_attacks import SecMLGammaShift
 
 class PEGammaAttack(Attack):
-    attack_cls = SecMLGammaInjection
-    attack_name = "secml_gamma_inject"
+    attack_cls = SecMLGammaShift
+    attack_name = "secml_gamma_shift"
     attack_type = "evasion"
     tags =["pe"]
     category = "blackbox"
-    framework = "mlsecevade"
+    framework = "secml"
 
     random = {
         "population_size": random.randint(5, 15),
@@ -19,9 +19,9 @@ class PEGammaAttack(Attack):
     }
 
     default = {
-        "population_size": 10,
-        "penalty_regularizer": 1e-6,
+        "population_size": 15,
+        "penalty_regularizer": 1e-7,
         "threshold": 0,
-        "iterations": 100,
+        "iterations": 500,
         "sections": 5
     }
