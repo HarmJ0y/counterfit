@@ -44,7 +44,7 @@ class Virustotal(ArtTarget):
         self.sample_endpoint = 'https://mlsec.io/static/MLSEC_2021_malware.zip'
         self.sample_input_path = f"{config.targets_path}/{self.model_name}/mlsec_malware_samples.zip"
         
-        self.vtapi_key = "f2b7be7967e0958e67df487afaa21ba5077e69edeb5d0d92d31044b6fbffa504"
+        self.vtapi_key = ""
 
         if not os.path.exists(self.sample_input_path):
             self.download_samples()
